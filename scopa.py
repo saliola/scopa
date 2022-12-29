@@ -26,11 +26,11 @@ class Deck:
     def __init__(self):
         # Create the deck: each card is represented as (suit, value)
         from random import shuffle
-        self._deck = [Card(value, suit) for suit in range(4) for value in range(1, 11)]
-        shuffle(self._deck)
+        self._cards = [Card(value, suit) for suit in range(4) for value in range(1, 11)]
+        shuffle(self._cards)
 
     def __iter__(self):
-        return iter(self._deck)
+        return iter(self._cards)
 
     def card_from_str(self, data):
         value = int(data[:-1])
@@ -44,26 +44,32 @@ class Deck:
         return [card.to_str() for card in cards]
 
     def display_state(self):
-        print(' '.join(self.card_to_str(card) for card in self._deck))
+        print(' '.join(self.card_to_str(card) for card in self._cards))
 
     def deal_cards(self, num_cards):
-        return [self._deck.pop() for _ in range(num_cards)]
+        return [self._cards.pop() for _ in range(num_cards)]
 
 
 class Match:
     def __init__(self):
+        self.initialize_deck()
+        self.deal_cards()
+
+    def initialize_deck(self):
         self._deck = Deck()
+
+    def deal_cards(self):
         self._tabletop = self._deck.deal_cards(4)
-        self._player1 = self._deck.deal_cards(3)
-        self._player0 = self._deck.deal_cards(3)
+        self._players = [{'hand': self._deck.deal_cards(3), 'tricks': []},
+                         {'hand': self._deck.deal_cards(3), 'tricks': []}]
 
     def __repr__(self):
         r"""
         Show current state of the game.
         """
         s  = f"tabletop: {self._tabletop}\n"
-        s += f"player0 : {self._player0}\n"
-        s += f"player1 : {self._player1}\n"
+        s += f"player0 : {self._players[0]}\n"
+        s += f"player1 : {self._players[1]}\n"
         s += f"deck    : {list(self._deck)}"
         return s
 
@@ -73,17 +79,7 @@ class Match:
     def tabletop(self):
         return self._tabletop
 
-    def play_turn(self, player):
-        while True:
-            card_to_play = input('card to play: ')
-            card_to_play = self._deck.card_from_str(card_to_play)
-            print(f"{card_to_play = }")
-
-            cards_from_table = input('cards from table: ').replace(',', ' ').split(' ')
-            cards_from_table = [self._deck.card_from_str(card) for card in cards_from_table]
-            print(f"{cards_from_table = }")
-
-    def play_card(self, card_to_play, cards_from_table):
+    def play_card(self, player, card_to_play, cards_from_table):
         r"""
 
         TESTS::
@@ -104,18 +100,17 @@ class Match:
 
         """
         if cards_from_table == []:
+            player['hand'].remove(card_to_play)
             self._tabletop.append(card_to_play)
-            return
-        elif self.verify_play(card_to_play, cards_from_table):
-            trick = [card_to_play]
+        elif self.verify_play(player, card_to_play, cards_from_table):
+            player['hand'].remove(card_to_play)
             for card in cards_from_table:
                 self._tabletop.remove(card)
-                trick.append(card)
-            return trick
+            player['tricks'].append([card_to_play] + cards_from_table)
         else:
             raise ValueError
 
-    def verify_play(self, card_to_play, cards_from_table):
+    def verify_play(self, player, card_to_play, cards_from_table):
         r"""
         TESTS::
 
@@ -148,6 +143,10 @@ class Match:
 
         """
 
+        # card to play is in player's hand
+        if card_to_play not in player['hand']:
+            return False
+
         # all cards in cards_from_table are on the table
         if any(card not in self._tabletop for card in cards_from_table):
             return False
@@ -163,5 +162,36 @@ class Match:
 
         return True
 
+    def play_turn(self, player):
+        while True:
+            card_to_play = input('card to play: ')
+            card_to_play = self._deck.card_from_str(card_to_play)
+            print(f"{card_to_play = }")
 
+            cards_from_table = input('cards from table: ').replace(',', ' ').split(' ')
+            cards_from_table = [self._deck.card_from_str(card) for card in cards_from_table]
+            print(f"{cards_from_table = }")
 
+class TestMatch(Match):
+    r"""
+
+    TESTS::
+
+        sage: M = TestMatch()
+        sage: players = M._players
+        sage: M
+        tabletop: [8B, 1C, 1B, 9S]
+        player0 : {'hand': [3D, 6S, 4D], 'tricks': []}
+        player1 : {'hand': [7S, 9B, 8D], 'tricks': []}
+        deck    : [4C, 5D, 5C, 8C, 4B, 1D, 3S, 6C, 9C, 7D, 7C, 6D, 10C, 10B, 9D, 2C, 2D, 10D, 10S, 1S, 3C, 4S, 5S, 2S, 2B, 7B, 8S, 5B, 6B, 3B]
+
+        sage: M.play_card(players[0], Card(4, 1), [Card(4, 0)]); M
+        sage: M.play_card(players[1], Card(5, 0), []); M
+        sage: M.play_card(players[0], Card(1, 1), []); M
+
+    """
+    def initialize_deck(self):
+        test_deck = [(4,1),(5,2),(5,1),(8,1),(4,3),(1,2),(3,0),(6,1),(9,1),(7,2),(7,1),(6,2),(10,1),(10,3),(9,2),(2,1),(2,2),(10,2),(10,0),(1,0),(3,1),(4,0),(5,0),(2,0),(2,3),(7,3),(8,0),(5,3),(6,3),(3,3),(8,2),(9,3),(7,0),(4,2),(6,0),(3,2),(9,0),(1,3),(1,1),(8,3)]
+        deck = Deck()
+        deck._cards = [Card(value, suit) for (value, suit) in test_deck]
+        self._deck = deck
