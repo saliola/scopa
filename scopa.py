@@ -2,7 +2,30 @@ _suit_names = ['Spade', 'Coppe', 'Denari', 'Bastoni']
 _suit_shortnames = [suit_name[0] for suit_name in _suit_names]
 
 class Card:
-    def __init__(self, value, suit):
+    def __init__(self, *data):
+        r"""
+        EXAMPLES::
+
+            sage: Card(8, 0)
+            8S
+            sage: Card('8S')
+            8S
+
+            sage: Card(10, 2)
+            10D
+            sage: Card('10D')
+            10D
+
+        """
+        if len(data) == 1:
+            if isinstance(data[0], str):
+                value = int(data[0][:-1])
+                suit  = _suit_shortnames.index(data[0][-1])
+            if isinstance(data[0], Card):
+                value = data[0].value()
+                suit  = data[0].suit()
+        else:
+            (value, suit) = data
         self._value = value
         self._suit = suit
 
@@ -53,15 +76,20 @@ class Deck:
 class Match:
     def __init__(self):
         self.initialize_deck()
-        self.deal_cards()
+        self._players = [{'hand': [], 'tricks': []},
+                         {'hand': [], 'tricks': []}]
+        self.deal_cards_to_table()
+        self.deal_cards_to_players()
 
     def initialize_deck(self):
         self._deck = Deck()
 
-    def deal_cards(self):
+    def deal_cards_to_table(self):
         self._tabletop = self._deck.deal_cards(4)
-        self._players = [{'hand': self._deck.deal_cards(3), 'tricks': []},
-                         {'hand': self._deck.deal_cards(3), 'tricks': []}]
+
+    def deal_cards_to_players(self):
+        for player in self._players:
+            player['hand'] = self._deck.deal_cards(3)
 
     def __repr__(self):
         r"""
@@ -69,12 +97,16 @@ class Match:
         """
         s  = f"tabletop: {self._tabletop}\n"
         s += f"player0 : {self._players[0]}\n"
-        s += f"player1 : {self._players[1]}\n"
-        s += f"deck    : {list(self._deck)}"
+        s += f"player1 : {self._players[1]}"
         return s
 
     def display_state(self):
         print(self)
+        s  = f"tabletop: {self._tabletop}\n"
+        s += f"player0 : {self._players[0]}\n"
+        s += f"player1 : {self._players[1]}\n"
+        s += f"deck    : {list(self._deck)}"
+        print(s)
 
     def tabletop(self):
         return self._tabletop
@@ -84,21 +116,25 @@ class Match:
 
         TESTS::
 
-            sage: M = Match()
-            sage: M._tabletop = [Card(1, 1), Card(7, 2), Card(5, 3), Card(2, 0)]
-            sage: M.tabletop()
-            [1C, 7D, 5B, 2S]
-            sage: M.play_card(Card(1, 0), [Card(1, 1)])
-            [1S, 1C]
-            sage: M.tabletop()
-            [7D, 5B, 2S]
-            sage: M.play_card(Card(7, 1), [Card(7, 2)])
-            [7C, 7D]
-            sage: M.tabletop()
-            [5B, 2S]
-            sage: M.play_card(Card(8, 1), [Card(5, 3), Card(2, 0)])
+            sage: M = TestMatch()
+            sage: players = M._players
+            sage: M
+            tabletop: [8B, 1C, 1B, 9S]
+            player0 : {'hand': [3D, 6S, 4D], 'tricks': []}
+            player1 : {'hand': [7S, 9B, 8D], 'tricks': []}
+            sage: M.play_card(players[0], '4D', []); M
+            tabletop: [8B, 1C, 1B, 9S, 4D]
+            player0 : {'hand': [3D, 6S], 'tricks': []}
+            player1 : {'hand': [7S, 9B, 8D], 'tricks': []}
+            sage: M.play_card(players[1], '9B', ['9S']); M
+            tabletop: [8B, 1C, 1B, 4D]
+            player0 : {'hand': [3D, 6S], 'tricks': []}
+            player1 : {'hand': [7S, 8D], 'tricks': [(9B, 9S, 0)]}
 
         """
+        card_to_play = Card(card_to_play)
+        cards_from_table = [Card(card) for card in cards_from_table]
+
         if cards_from_table == []:
             player['hand'].remove(card_to_play)
             self._tabletop.append(card_to_play)
@@ -106,7 +142,8 @@ class Match:
             player['hand'].remove(card_to_play)
             for card in cards_from_table:
                 self._tabletop.remove(card)
-            player['tricks'].append([card_to_play] + cards_from_table)
+            scopa_point = 0 if self._tabletop else 1
+            player['tricks'].append(tuple([card_to_play] + cards_from_table + [scopa_point]))
         else:
             raise ValueError
 
@@ -114,31 +151,50 @@ class Match:
         r"""
         TESTS::
 
-            sage: M = Match()
-            sage: M._tabletop = [Card(1, 1), Card(7, 2), Card(5, 3), Card(2, 0)]
-            sage: M.tabletop()
-            [1C, 7D, 5B, 2S]
+            sage: M = TestMatch()
+            sage: players = M._players
+            sage: M
+            tabletop: [8B, 1C, 1B, 9S]
+            player0 : {'hand': [3D, 6S, 4D], 'tricks': []}
+            player1 : {'hand': [7S, 9B, 8D], 'tricks': []}
+
+        Card to play must be in player's hand::
+
+            sage: M.verify_play(players[0], Card(6, 1), [])
+            False
+            sage: M.verify_play(players[0], Card(6, 0), [])
+            True
+
+            sage: M.verify_play(players[1], Card(9, 0), [Card(9, 0)])
+            False
+            sage: M.verify_play(players[1], Card(9, 3), [Card(9, 0)])
+            True
 
         All cards in ``cards_from_table`` must be on the table::
 
-            sage: M.verify_play(Card(6, 1), [Card(5, 3), Card(1, 0)])
+            sage: M.verify_play(players[1], Card(8, 2), [Card(8, 1)])
             False
+            sage: M.verify_play(players[1], Card(8, 2), [Card(8, 3)])
+            True
 
         Sum of values of ``cards_from_table`` is the value of ``card_to_play``::
 
-            sage: M.verify_play(Card(8, 1), [Card(5, 3), Card(2, 0)])
+            sage: M.play_card(players[0], Card(6, 0), [])
+            sage: M
+            tabletop: [8B, 1C, 1B, 9S, 6S]
+            player0 : {'hand': [3D, 4D], 'tricks': []}
+            player1 : {'hand': [7S, 9B, 8D], 'tricks': []}
+            sage: M.verify_play(players[1], Card(7, 0), [Card(6, 0), Card(1, 3)])
+            True
+            sage: M.verify_play(players[1], Card(7, 0), [Card(9, 0), Card(1, 3)])
             False
-            sage: M.verify_play(Card(6, 1), [Card(5, 3), Card(1, 1)])
-            True
-            sage: M.verify_play(Card(1, 0), [Card(1, 1)])
-            True
-            sage: M.verify_play(Card(7, 1), [Card(7, 2)])
+            sage: M.verify_play(players[1], Card(9, 3), [Card(9, 0)])
             True
 
         If the value of ``card_to_play`` matches the value of a single card on
         the table, then multiple cards cannot be taken::
 
-            sage: M.verify_play(Card(7, 1), [Card(5, 3), Card(2, 0)])
+            sage: M.verify_play(players[1], Card(9, 3), [Card(8, 3), Card(1, 1)])
             False
 
         """
@@ -152,7 +208,7 @@ class Match:
             return False
 
         # sum of cards from table equals value of card played
-        if card_to_play.value() != sum(card.value() for card in cards_from_table):
+        if cards_from_table and card_to_play.value() != sum(card.value() for card in cards_from_table):
             return False
 
         # you can only pick up multiple cards from the table if there isn't an exact match
@@ -175,7 +231,9 @@ class Match:
 class TestMatch(Match):
     r"""
 
-    TESTS::
+    TESTS:
+
+    Initialize a match::
 
         sage: M = TestMatch()
         sage: players = M._players
@@ -183,11 +241,44 @@ class TestMatch(Match):
         tabletop: [8B, 1C, 1B, 9S]
         player0 : {'hand': [3D, 6S, 4D], 'tricks': []}
         player1 : {'hand': [7S, 9B, 8D], 'tricks': []}
-        deck    : [4C, 5D, 5C, 8C, 4B, 1D, 3S, 6C, 9C, 7D, 7C, 6D, 10C, 10B, 9D, 2C, 2D, 10D, 10S, 1S, 3C, 4S, 5S, 2S, 2B, 7B, 8S, 5B, 6B, 3B]
 
-        sage: M.play_card(players[0], Card(4, 1), [Card(4, 0)]); M
-        sage: M.play_card(players[1], Card(5, 0), []); M
-        sage: M.play_card(players[0], Card(1, 1), []); M
+    Round begins. Players alternate playing a card, starting with player 0::
+
+        sage: M.play_card(players[0], '4D', []); M
+        tabletop: [8B, 1C, 1B, 9S, 4D]
+        player0 : {'hand': [3D, 6S], 'tricks': []}
+        player1 : {'hand': [7S, 9B, 8D], 'tricks': []}
+        sage: M.play_card(players[1], '9B', ['9S']); M
+        tabletop: [8B, 1C, 1B, 4D]
+        player0 : {'hand': [3D, 6S], 'tricks': []}
+        player1 : {'hand': [7S, 8D], 'tricks': [(9B, 9S, 0)]}
+        sage: M.play_card(players[0], '6S', ['1C', '1B', '4D']); M
+        tabletop: [8B]
+        player0 : {'hand': [3D], 'tricks': [(6S, 1C, 1B, 4D, 0)]}
+        player1 : {'hand': [7S, 8D], 'tricks': [(9B, 9S, 0)]}
+        sage: M.play_card(players[1], '8D', ['8B']); M
+        tabletop: []
+        player0 : {'hand': [3D], 'tricks': [(6S, 1C, 1B, 4D, 0)]}
+        player1 : {'hand': [7S], 'tricks': [(9B, 9S, 0), (8D, 8B, 1)]}
+        sage: M.play_card(players[0], '3D', []); M
+        tabletop: [3D]
+        player0 : {'hand': [], 'tricks': [(6S, 1C, 1B, 4D, 0)]}
+        player1 : {'hand': [7S], 'tricks': [(9B, 9S, 0), (8D, 8B, 1)]}
+        sage: M.play_card(players[1], '7S', []); M
+        tabletop: [3D, 7S]
+        player0 : {'hand': [], 'tricks': [(6S, 1C, 1B, 4D, 0)]}
+        player1 : {'hand': [], 'tricks': [(9B, 9S, 0), (8D, 8B, 1)]}
+
+    Round is over. Deal three more cards to each player::
+
+        sage: M.deal_cards_to_players(); M
+        tabletop: [3D, 7S]
+        player0 : {'hand': [3B, 6B, 5B], 'tricks': [(6S, 1C, 1B, 4D, 0)]}
+        player1 : {'hand': [8S, 7B, 2B], 'tricks': [(9B, 9S, 0), (8D, 8B, 1)]}
+
+    Second round begins::
+
+        ...
 
     """
     def initialize_deck(self):
