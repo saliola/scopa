@@ -1,53 +1,48 @@
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 
-_suit_names = ['Spade', 'Coppe', 'Denari', 'Bastoni']
-_suit_shortnames = [suit_name[0] for suit_name in _suit_names]
+SUIT_NAMES = ['Spade', 'Coppe', 'Denari', 'Bastoni']
+SUIT_SHORTNAMES = [suit_name[0] for suit_name in SUIT_NAMES]
+PRIMIERA_POINTS = {1: 16, 2: 12, 3: 13, 4: 14, 5: 15, 6: 18, 7: 21, 8: 10, 9: 10, 10: 10}
+SETTEBELLO_SUIT = 2
+SETTEBELLO_VALUE = 7
+
 Player = namedtuple('Player', 'number')
-Trick = namedtuple('Trick', 'card_played cards_picked_up scopa')
+Trick = namedtuple('Trick', ['card_played', 'cards_picked_up', 'scopa'])
 
-class Card:
-    def __init__(self, *data):
-        r"""
-        EXAMPLES::
+class Card(namedtuple('Card', ['value', 'suit'])):
+    r"""
 
-            sage: Card(8, 0)
-            8S
-            sage: Card('8S')
-            8S
+    EXAMPLES::
 
-            sage: Card(10, 2)
-            10D
-            sage: Card('10D')
-            10D
+        sage: Card(8, 0)
+        8S
+        sage: Card('8S')
+        8S
 
-        """
+        sage: Card(10, 2)
+        10D
+        sage: Card('10D')
+        10D
+
+        sage: Card(Card(10, 2))
+        10D
+        sage: Card(Card('10D'))
+        10D
+
+    """
+    def __new__(cls, *data):
         if len(data) == 1:
+            if isinstance(data[0], Card):
+                return data[0]
             if isinstance(data[0], str):
                 value = int(data[0][:-1])
-                suit  = _suit_shortnames.index(data[0][-1])
-            if isinstance(data[0], Card):
-                value = data[0].value()
-                suit  = data[0].suit()
+                suit  = SUIT_SHORTNAMES.index(data[0][-1])
         else:
             (value, suit) = data
-        self._value = value
-        self._suit = suit
-
-    def suit(self):
-        return self._suit
-
-    def value(self):
-        return self._value
-
-    def to_str(self):
-        return f"{self._value}{_suit_shortnames[self._suit]}"
+        return super().__new__(cls, value, suit)
 
     def __repr__(self):
-        return self.to_str()
-
-    def __eq__(self, other):
-        return type(self) == type(other) and self.value() == other.value() and self.suit() == other.suit()
-
+        return f"{self.value}{SUIT_SHORTNAMES[self.suit]}"
 
 class Deck:
     def __init__(self):
@@ -59,13 +54,16 @@ class Deck:
     def __iter__(self):
         return iter(self._cards)
 
+    def __len__(self):
+        return len(self._cards)
+
     def card_from_str(self, data):
         value = int(data[:-1])
-        suit = _suit_shortnames.index(data[-1])
+        suit = SUIT_SHORTNAMES.index(data[-1])
         return (value, suit)
 
     def card_to_str(self, data):
-        return f"{data[0]}{_suit_shortnames[data[1]]}"
+        return f"{data[0]}{SUIT_SHORTNAMES[data[1]]}"
 
     def cards_to_str(self, cards):
         return [card.to_str() for card in cards]
@@ -83,6 +81,8 @@ class Match:
         self._tricks = {player: [] for player in self.players}
         self._hands  = {player: [] for player in self.players}
         self._tabletop = []
+        self._last_player_to_pickup = None
+        self._turn_number = 0
 
     def initialize_deck(self):
         self._deck = Deck()
@@ -137,6 +137,8 @@ class Match:
         card_to_play = Card(card_to_play)
         cards_from_table = [Card(card) for card in cards_from_table]
 
+        self._turn_number += 1
+
         if cards_from_table == []:
             self._hands[player].remove(card_to_play)
             self._tabletop.append(card_to_play)
@@ -144,8 +146,9 @@ class Match:
             self._hands[player].remove(card_to_play)
             for card in cards_from_table:
                 self._tabletop.remove(card)
-            scopa_point = 0 if self._tabletop else 1
+            scopa_point = 0 if self._tabletop and self._turn_number != 36 else 1
             self._tricks[player].append(Trick(card_to_play, tuple(cards_from_table), scopa_point))
+            self._last_player_to_pickup = player
         else:
             raise ValueError
 
@@ -212,12 +215,12 @@ class Match:
             return False
 
         # sum of cards from table equals value of card played
-        if cards_from_table and card_to_play.value() != sum(card.value() for card in cards_from_table):
+        if cards_from_table and card_to_play.value != sum(card.value for card in cards_from_table):
             return False
 
         # you can only pick up multiple cards from the table if there isn't an exact match
         if len(cards_from_table) > 1:
-            if card_to_play.value() in [card.value() for card in self._tabletop]:
+            if card_to_play.value in [card.value for card in self._tabletop]:
                 return False
 
         return True
@@ -237,7 +240,7 @@ class TestMatch(Match):
 
     TESTS:
 
-    Initialize a match::
+    Set up a match::
 
         sage: M = TestMatch();
         sage: M
