@@ -2,12 +2,15 @@ from collections import defaultdict, namedtuple
 
 SUIT_NAMES = ['Spade', 'Coppe', 'Denari', 'Bastoni']
 SUIT_SHORTNAMES = [suit_name[0] for suit_name in SUIT_NAMES]
-PRIMIERA_POINTS = {1: 16, 2: 12, 3: 13, 4: 14, 5: 15, 6: 18, 7: 21, 8: 10, 9: 10, 10: 10}
+PRIMIERA_POINTS = defaultdict(int, {1: 16, 2: 12, 3: 13, 4: 14, 5: 15, 6: 18, 7: 21, 8: 10, 9: 10, 10: 10})
 SETTEBELLO_SUIT = 2
 SETTEBELLO_VALUE = 7
 
-Player = namedtuple('Player', 'number')
 Trick = namedtuple('Trick', ['card_played', 'cards_picked_up', 'scopa'])
+
+class Player(namedtuple('Player', 'number')):
+    def __repr__(self):
+        return f"Player{self.number}"
 
 class Card(namedtuple('Card', ['value', 'suit'])):
     r"""
@@ -235,6 +238,146 @@ class Match:
             cards_from_table = [self._deck.card_from_str(card) for card in cards_from_table]
             print(f"{cards_from_table = }")
 
+    def tally_tricks(self):
+        SETTEBELLO = Card(SETTEBELLO_VALUE, SETTEBELLO_SUIT)
+
+        tally = {}
+        for player in self.players:
+            num_scopas = 0
+            num_cards = 0
+            num_denari = 0
+            settebello = 0
+            primiera_cards = [Card(0, 0), Card(0, 1), Card(0, 2), Card(0, 3)]
+            primiera_score = [0, 0, 0, 0]
+
+            for trick in self._tricks[player]:
+                num_scopas += trick.scopa
+                for card in trick.cards_picked_up + (trick.card_played,):
+                    if card:
+                        num_cards += 1
+                        if card.suit == SETTEBELLO_SUIT:
+                            num_denari += 1
+                        if card == SETTEBELLO:
+                            settebello = 1
+                        if PRIMIERA_POINTS[card.value] > primiera_score[card.suit]:
+                            primiera_cards[card.suit] = card
+                            primiera_score[card.suit] = PRIMIERA_POINTS[card.value]
+
+            tally[player] = (num_scopas,
+                             num_cards,
+                             num_denari,
+                             settebello,
+                             sum(primiera_score),
+                             primiera_cards)
+
+        return tally
+
+
+    def score_match(self):
+        r"""
+
+        TESTS::
+
+            sage: M = TestMatch()
+            sage: M.play_random_match()
+
+        """
+        tally = self.tally_tricks()
+
+        points = {player: 0 for player in self.players}
+        for player in self.players:
+            points[player]  = tally[player][0]              # number of scopas
+            points[player] += int(tally[player][1] > 20)    # most cards
+            points[player] += int(tally[player][2] >  5)    # most denari
+            points[player] += tally[player][3]              # settebello
+
+        # primiera
+        if   tally[self.players[0]][4] > tally[self.players[1]][4]:
+            points[self.players[0]] += 1
+        elif tally[self.players[0]][4] < tally[self.players[1]][4]:
+            points[self.players[1]] += 1
+
+        return points
+
+    def play_random_match(self, verbose=True):
+        r"""
+
+        TESTS::
+
+            sage: M = TestMatch()
+            sage: M.play_random_match()
+
+        """
+        self.deal_cards_to_table()
+
+        rows = []
+        while self._deck:
+            self.deal_cards_to_players()
+            for _ in range(3):
+                for player in self.players:
+                    row = [f"{self._tabletop}"]
+                    card_to_play, cards_from_table = self.random_play(player)
+                    if cards_from_table:
+                        row.append(f"{player} plays {card_to_play} to pick up {str(cards_from_table)[1:-1]}")
+                    else:
+                        row.append(f"{player} places {card_to_play} on table")
+                    rows.append(row)
+
+        row = [f"{self._tabletop}"]
+        if self._tabletop:
+            last_trick = Trick(None, tuple(self._tabletop), 0)
+            self._tricks[self._last_player_to_pickup].append(last_trick)
+            self._tabletop = []
+            row.append(f"Cards on TableTop go to {self._last_player_to_pickup}")
+        rows.append(row)
+
+        print(table(rows))
+        print()
+
+        print(f"tally: {self.tally_tricks()}")
+
+        print(f"score: {self.score_match()}")
+
+
+    def random_play(self, player):
+        import random
+        card_to_play, cards_from_table = random.choice(self.possible_plays(player))
+        self.play_card(player, card_to_play, cards_from_table)
+        return card_to_play, cards_from_table
+
+    def possible_plays(self, player):
+        r"""
+
+        TESTS::
+
+            sage: M = TestMatch();
+            sage: M.deal_cards_to_table()
+            sage: M.deal_cards_to_players()
+            sage: M
+            {'Player1': {'hand': [3D, 6S, 4D], 'tricks': []},
+             'Player2': {'hand': [7S, 9B, 8D], 'tricks': []},
+             'TableTop': [8B, 1C, 1B, 9S]}
+            sage: Player1, Player2 = M.players
+            sage: M.possible_plays(Player1)
+            [(3D, ()), (6S, ()), (4D, ())]
+            sage: M.possible_plays(Player2)
+            [(8D, (8B,)), (9B, (9S,)), (7S, ())]
+
+        """
+        players_hand = self._hands[player]
+        plays = []
+        for cards_from_table in powerset(self._tabletop):
+            s = sum(card.value for card in cards_from_table)
+            for card_to_play in players_hand:
+                if card_to_play.value == s:
+                    if self.verify_play(player, card_to_play, cards_from_table):
+                        plays.append((card_to_play, cards_from_table))
+        for card_to_play in players_hand:
+            if card_to_play not in [play[0] for play in plays]:
+                plays.append((card_to_play, ()))
+        return plays
+
+
 class TestMatch(Match):
     r"""
 
@@ -319,3 +462,51 @@ class TestMatch(Match):
         deck = Deck()
         deck._cards = [Card(value, suit) for (value, suit) in test_deck]
         self._deck = deck
+
+    def play_test_match(self, verbose=True):
+        r"""
+
+        TESTS::
+
+            sage: TestMatch().play_test_match()
+
+        """
+        self.deal_cards_to_table()
+
+        rows = []
+        while self._deck:
+            self.deal_cards_to_players()
+            for _ in range(3):
+                for player in self.players:
+                    row = [f"{self._tabletop}"]
+                    card_to_play, cards_from_table = self.possible_plays(player)[0]
+                    self.play_card(player, card_to_play, cards_from_table)
+                    if cards_from_table:
+                        row.append(f"{player} plays {card_to_play} to pick up {str(cards_from_table)[1:-1]}")
+                    else:
+                        row.append(f"{player} places {card_to_play} on table")
+                    rows.append(row)
+
+        row = [f"{self._tabletop}"]
+        if self._tabletop:
+            last_trick = Trick(None, tuple(self._tabletop), 0)
+            self._tricks[self._last_player_to_pickup].append(last_trick)
+            self._tabletop = []
+            row.append(f"Cards on TableTop go to {self._last_player_to_pickup}")
+        rows.append(row)
+
+        print(table(rows))
+        print()
+
+        print(f"tally: {self.tally_tricks()}")
+
+        print(f"score: {self.score_match()}")
+
+
+def powerset(s):
+    r"""
+    Copied from the itertools page
+    https://docs.python.org/3/library/itertools.html#itertools-recipes
+    """
+    from itertools import chain, combinations
+    return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
