@@ -76,21 +76,19 @@ class Deck:
     def deal_cards(self, num_cards):
         return [self._cards.pop() for _ in range(num_cards)]
 
-
 class Match:
     def __init__(self):
         self.initialize_deck()
         self.players = [Player(1), Player(2)]
         self._tricks = {player: [] for player in self.players}
         self._hands  = {player: [] for player in self.players}
-        self.deal_cards_to_table()
-        self.deal_cards_to_players()
+        self._tabletop = []
 
     def initialize_deck(self):
         self._deck = Deck()
 
     def deal_cards_to_table(self):
-        self._tabletop = self._deck.deal_cards(4)
+        self._tabletop.extend(self._deck.deal_cards(4))
 
     def deal_cards_to_players(self):
         for player in self.players:
@@ -117,7 +115,10 @@ class Match:
 
         TESTS::
 
-            sage: M = TestMatch(); M
+            sage: M = TestMatch()
+            sage: M.deal_cards_to_table()
+            sage: M.deal_cards_to_players()
+            sage: M
             {'Player1': {'hand': [3D, 6S, 4D], 'tricks': []},
              'Player2': {'hand': [7S, 9B, 8D], 'tricks': []},
              'TableTop': [8B, 1C, 1B, 9S]}
@@ -152,7 +153,10 @@ class Match:
         r"""
         TESTS::
 
-            sage: M = TestMatch(); M
+            sage: M = TestMatch()
+            sage: M.deal_cards_to_table()
+            sage: M.deal_cards_to_players()
+            sage: M
             {'Player1': {'hand': [3D, 6S, 4D], 'tricks': []},
              'Player2': {'hand': [7S, 9B, 8D], 'tricks': []},
              'TableTop': [8B, 1C, 1B, 9S]}
@@ -235,7 +239,18 @@ class TestMatch(Match):
 
     Initialize a match::
 
-        sage: M = TestMatch(); M
+        sage: M = TestMatch();
+        sage: M
+        {'Player1': {'hand': [], 'tricks': []},
+         'Player2': {'hand': [], 'tricks': []},
+         'TableTop': []}
+        sage: M.deal_cards_to_table()
+        sage: M
+        {'Player1': {'hand': [], 'tricks': []},
+         'Player2': {'hand': [], 'tricks': []},
+         'TableTop': [8B, 1C, 1B, 9S]}
+        sage: M.deal_cards_to_players()
+        sage: M
         {'Player1': {'hand': [3D, 6S, 4D], 'tricks': []},
          'Player2': {'hand': [7S, 9B, 8D], 'tricks': []},
          'TableTop': [8B, 1C, 1B, 9S]}
